@@ -33,15 +33,6 @@ class ParamData:
         self.jvec = np.array([jx, jy, jz])
         self.hvec = np.array([hx, hy, hz])
         self.verbose = verbose
-        self.output_magx = "sx_outfile.txt"
-        self.output_magy = "sy_outfile.txt"
-        self.output_magz = "sz_outfile.txt"
-        self.output_sxvar = "sxvar_outfile.txt"
-        self.output_syvar = "syvar_outfile.txt"
-        self.output_szvar = "szvar_outfile.txt"
-        self.output_sxyvar = "sxyvar_outfile.txt"
-        self.output_sxzvar = "sxzvar_outfile.txt"
-        self.output_syzvar = "syzvar_outfile.txt"
         self.jmat = hopmat
 
 class Hamiltonian:
@@ -163,34 +154,6 @@ def evolve_numint(hamilt,times,initstate, params):
       times, args=(fulljac, hamilt, params), Dfun=jac)
     return psi_t[:,0:rows] + (1.j) * psi_t[:, rows:]
 
-class OutData:
-    description = """Class to store output data"""
-    def __init__(self, t, sx, sy, sz, sxx, syy, szz, sxy, sxz, syz, szsz ,params):
-        self.t_output = t
-        self.sx, self.sy, self.sz = sx, sy, sz
-        self.sxvar, self.syvar, self.szvar = sxx, syy, szz
-        self.sxyvar, self.sxzvar, self.syzvar = sxy, sxz, syz
-        self.__dict__.update(params.__dict__)
-
-    def dump_data(self):
-        np.savetxt(self.output_magx, np.vstack((self.t_output, self.sx)).T,\
-          delimiter=' ')
-        np.savetxt(self.output_magy, np.vstack((self.t_output, self.sy)).T,
-                    delimiter=' ')
-        np.savetxt(self.output_magz, np.vstack((self.t_output, self.sz)).T,\
-          delimiter=' ')
-        np.savetxt(self.output_sxvar, \
-          np.vstack((self.t_output, self.sxvar)).T, delimiter=' ')
-        np.savetxt(self.output_syvar, \
-          np.vstack((self.t_output, self.syvar)).T, delimiter=' ')
-        np.savetxt(self.output_szvar, \
-          np.vstack((self.t_output, self.szvar)).T, delimiter=' ')
-        np.savetxt(self.output_sxyvar, \
-          np.vstack((self.t_output, self.sxyvar)).T, delimiter=' ')
-        np.savetxt(self.output_sxzvar, \
-          np.vstack((self.t_output, self.sxzvar)).T, delimiter=' ')
-        np.savetxt(self.output_syzvar, \
-          np.vstack((self.t_output, self.syzvar)).T, delimiter=' ')
 
 def run_dyn(params):
     if params.verbose:
@@ -265,14 +228,11 @@ def run_dyn(params):
     syzvar_data = np.array([np.vdot(psi,np.dot(syzvar,psi)) \
       for psi in psi_t])
     syzvar_data = 2.0 * syzvar_data - (sydata) * (szdata)
-
-    data = OutData(t_output,sxdata.real, sydata.real, \
-      szdata.real, sxvar_data.real, syvar_data.real, \
-        szvar_data.real, sxyvar_data.real, \
-              sxzvar_data.real, syzvar_data.real, params)
+    
+    #ADD CODE FOR DEFECT DENSITY HERE
 
     print "\nDumping outputs to files ..."
-    data.dump_data()
+    #DO THIS
     print 'Done'
 
 if __name__ == '__main__':   
