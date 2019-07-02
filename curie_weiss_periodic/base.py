@@ -18,6 +18,8 @@ sig_x, sig_y, sig_z = \
   np.array([[0j, 1.0+0j], [1.0+0j, 0j]]), \
     np.array([[0j, -1j], [1j, 0j]]), \
       np.array([[1.0+0j, 0j], [0j, -1+0j]])
+sig_plus = (sig_x + sig_y*1j)/2.0
+sig_minus = (sig_x - sig_y*1j)/2.0
 
 class ParamData:
     description = """Class to store parameters and hopping matrix"""
@@ -30,10 +32,11 @@ class ParamData:
         self.ampl = ampl
         self.omega = omega
         self.times = times
-        self.jvec = np.array([jx, jy, jz])
-        self.hvec = np.array([hx, hy, hz])
+        self.jx, self.jy, self.jz = jx, jy, jz
+        self.hx, self.hy, self.hz = hx, hy, hz
         self.verbose = verbose
         self.jmat = hopmat
+        self.norm = 1.0 #Change to kac norm later
 
 class Hamiltonian:
     description = """Precalculates all the dynamics information
@@ -142,6 +145,37 @@ def jac(y, t0, jacmat, hamilt, params):
 def func(y, t0, jacmat, hamilt, params):
     return np.dot(jac(y, t0, jacmat, hamilt, params), y)
 
+def defect_density(hamilt):
+    lsize = hamilt.lattice_size
+    kprod_sigZ = np.kron(sig_z,np.eye(2**(lsize-2),2**(lsize-2)))
+    for x in xrange(1,lsize-1):
+        id1 = np.kron(np.eye(2**x,2**x),sig_z)
+        id2 = np.kron(id1,np.eye(2**(lsize-2-x),2**(lsize-2-x)))
+        kprod_sigZ = kprod_sigZ + id2    
+    sigZ_plus = np.kron(kprod_sigZ,sig_plus)
+    sigZ_minus = np.kron(kprod_sigZ,sig_minus)
+    bglbv_d = np.zeros((2**lsize,2**lsize), dtype='complex128')
+    # run the loops
+    for i in xrange(0,lsize):
+        k = -np.pi
+        while k<=np.pi:
+            h0 = 10
+            eps_k = h0 + np.cos(k)
+            e_k = np.sqrt(np.sin(k)**2 + (h0 + np.cos(k)**2))
+            delt_k = np.sin(k)
+    
+            mm = (e_k - eps_k)/delt_k
+            mm1 = (1-0.5*(mm**2))
+            
+            expn_minus = ((np.exp(-lsize*k*1j)-1)/(np.exp(-k*1j-1)))**2
+            expn_plus = ((np.exp(lsize*k*1j)-1)/(np.exp(k*1j-1)))**2
+            # gamma dagger
+            gammad = (mm1*expn_minus*sigZ_plus)*1j + mm * mm1 * expn_minus * sigZ_minus
+            gamma = mm * mm1 * expn_plus * sigZ_plus - (mm1 * expn_plus * sigZ_minus)*1j 
+            bglbv_d += np.dot(gammad,gamma)
+            k+=0.01
+    return bglbv_d        
+
 def evolve_numint(hamilt,times,initstate, params):
     (rows,cols) = hamilt.hamiltmat.shape
     fulljac = np.zeros((2*rows,2*cols), dtype="float64")
@@ -198,6 +232,9 @@ def run_dyn(params):
       [h.offd_corrmats(sitepair)[2] \
         for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
     sxyvar, sxzvar, syzvar = (sxyvar/lsq), (sxzvar/lsq), (syzvar/lsq)
+    
+    #Defect density
+    gdg = defect_density(h)
 
     psi_t = evolve_numint(h, t_output, initstate, params)
 
@@ -229,10 +266,14 @@ def run_dyn(params):
       for psi in psi_t])
     syzvar_data = 2.0 * syzvar_data - (sydata) * (szdata)
     
-    #ADD CODE FOR DEFECT DENSITY HERE
+    defect_density_data = np.array([np.vdot(psi,np.dot(gdg,psi)) for psi in psi_t])
 
     print "\nDumping outputs to files ..."
+    print np.vstack(zip(t_output,sxdata))
+
     #DO THIS
+    
+    print np.vstack(zip(t_output,defect_density_data))
     print 'Done'
 
 if __name__ == '__main__':   
