@@ -8,6 +8,7 @@ import numpy as np
 from pprint import pprint
 from itertools import combinations
 from scipy.integrate import odeint
+from numpy import linalg as LA
 
 desc = """Dynamics by exact diagonalization of
                 generalized Curie-Weiss model with long range interactions
@@ -145,50 +146,16 @@ def jac(y, t0, jacmat, hamilt, params):
 def func(y, t0, jacmat, hamilt, params):
     return np.dot(jac(y, t0, jacmat, hamilt, params), y)
 
-# =============================================================================
-# def defect_density(hamilt):
-#     lsize = hamilt.lattice_size
-#     kprod_sigZ = np.kron(sig_z,np.eye(2**(lsize-2),2**(lsize-2)))
-#     for x in xrange(1,lsize-1):
-#         id1 = np.kron(np.eye(2**x,2**x),sig_z)
-#         id2 = np.kron(id1,np.eye(2**(lsize-2-x),2**(lsize-2-x)))
-#         kprod_sigZ = kprod_sigZ + id2    
-#     sigZ_plus = np.kron(kprod_sigZ,sig_plus)
-#     sigZ_minus = np.kron(kprod_sigZ,sig_minus)
-#     bglbv_d = np.zeros((2**lsize,2**lsize), dtype='complex128')
-#     # run the loops
-#     for i in xrange(0,lsize):
-#         k = -np.pi
-#         while k<=np.pi:
-#             h0 = 10
-#             eps_k = h0 + np.cos(k)
-#             e_k = np.sqrt(np.sin(k)**2 np.eye(2**lsize)+ (h0 + np.cos(k)**2))
-#             delt_k = np.sin(k)
-#     
-#             mm = (e_k - eps_k)/delt_k
-#             mm1 = (1-0.5*(mm**2))
-#             
-#             expn_minus = ((np.exp(-lsize*k*1j)-1)/(np.exp(-k*1j-1)))**2
-#             expn_plus = ((np.exp(lsize*k*1j)-1)/(np.exp(k*1j-1)))**2
-#             # gamma dagger
-#             gammad = (mm1*expn_minus*sigZ_plus)*1j + mm * mm1 * expn_minus * sigZ_minus
-#             gamma = mm * mm1 * expn_plus * sigZ_plus - (mm1 * expn_plus * sigZ_minus)*1j 
-#             bglbv_d += np.dot(gammad,gamma)
-#             k+=0.01
-#     return bglbv_d        
-# =============================================================================
-
-
-#Problem with normalization!!!!
 def defect_density(hamilt):
     lsize = hamilt.lattice_size
     fbz = np.linspace(-np.pi, np.pi, lsize)
     epsilon_k = hamilt.ampl + np.cos(fbz)
     delta_k = np.sin(fbz)
     E_k = - np.sqrt(epsilon_k * epsilon_k + delta_k * delta_k)
-    s = (epsilon_k - E_k)/delta_k
-    v = 1.0 - 0.5 * s * s
-    u = s * v
+    s = delta_k/(epsilon_k - E_k)
+    u = np.sqrt(1/(1 + s * s))
+    v = s * u
+    v[np.isnan(v)] = 1.0
     c_ops = []
     for i in np.arange(lsize):
         if i != 0:
@@ -199,6 +166,7 @@ def defect_density(hamilt):
         else:
             c_i = sig_plus
         c_i = np.kron(c_i,np.eye(2**(lsize - i - 1)))    
+       #print c_i
         c_ops.append(c_i)
     ck_ops = []
     for k in fbz:
@@ -206,8 +174,7 @@ def defect_density(hamilt):
     gammak_ops = []
     for ki, k in enumerate(fbz):
         gammak_ops.append(u[ki] * ck_ops[ki] - (1j) * v[ki] * ck_ops[::-1][ki])
-    return np.sum([np.dot(gammak_ops[ki].T.conjugate(), gammak_ops[ki]) for ki, k in enumerate(fbz)], axis=0)/lsize    
-
+    return np.sum([np.dot(gammak_ops[ki].T.conjugate(), gammak_ops[ki]) for ki, k in enumerate(fbz)], axis=0)/lsize
 
 def evolve_numint(hamilt,times,initstate, params):
     (rows,cols) = hamilt.hamiltmat.shape
@@ -217,7 +184,7 @@ def evolve_numint(hamilt,times,initstate, params):
     fulljac[rows:, 0:cols] = -hamilt.hamiltmat.real
     fulljac[rows:, cols:] = hamilt.hamiltmat.imag
 
-    psi_t = odeint(func, np.concatenate((initstate, np.zeros(rows))),\
+    psi_t = odeint(func, np.concatenate((initstate.real, initstate.imag)),\
       times, args=(fulljac, hamilt, params), Dfun=jac)
     return psi_t[:,0:rows] + (1.j) * psi_t[:, rows:]
 
@@ -234,9 +201,10 @@ def run_dyn(params):
     lsq = lsize * lsize
 
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
-    initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
-    t_output = params.times
-
+    #initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
+    E, U = LA.eig(h.hamiltmat + h.ampl * h.trans_hamilt)
+    minind, = np.where(E == np.amin(E))
+    initstate = U[:, minind[0]]
     #Required observables
 
     sx = np.sum(np.array([h.nummats(mu)[0] \
@@ -269,7 +237,7 @@ def run_dyn(params):
     #Defect density
     gdg = defect_density(h)
 
-    psi_t = evolve_numint(h, t_output, initstate, params)
+    psi_t = evolve_numint(h, params.times, initstate, params)
 
     sxdata = np.array([np.vdot(psi,np.dot(sx,psi)) for psi in psi_t])
     sydata = np.array([np.vdot(psi,np.dot(sy,psi)) for psi in psi_t])
@@ -299,15 +267,15 @@ def run_dyn(params):
       for psi in psi_t])
     syzvar_data = 2.0 * syzvar_data - (sydata) * (szdata)
     
-    defect_density_data = np.array([np.vdot(psi,np.dot(gdg,psi)) for psi in psi_t])
-
-    print "\nDumping outputs to files ..."
-    print np.vstack(zip(t_output,sxdata))
-
-    #DO THIS
+    defect_density_data = np.abs(np.array([np.vdot(psi,np.dot(gdg,psi)) for psi in psi_t]))
     
-    print np.vstack(zip(t_output,defect_density_data))
-    print 'Done'
+
+    print "\nDumping outputs to dictionary ..."
+    
+    return {"t":params.times, "sx":sxdata, "sy":sydata, "sz":szdata, \
+              "sxvar":sxvar_data, "syvar":syvar_data, "szvar":szvar_data,\
+              "sxyvar":sxyvar_data, "sxzvar":sxzvar_data, "syzvar":syzvar_data,\
+              "defect_density":defect_density_data}
 
 if __name__ == '__main__':   
     #Power law decay of interactions
