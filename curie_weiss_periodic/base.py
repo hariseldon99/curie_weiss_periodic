@@ -24,13 +24,11 @@ sig_minus = (sig_x - sig_y*1j)/2.0
 
 class ParamData:
     description = """Class to store parameters and hopping matrix"""
-    def __init__(self, hopmat = np.eye(11), lattice_size=11, \
-                                      ampl=1.0, omega=0.0,\
+    def __init__(self, hopmat = np.eye(11), lattice_size=11, omega=0.0, \
                                       times = np.linspace(0.0, 10.0,100),\
                                        hx=0.0, hy=0.0, hz=0.0,\
                                         jx=0.0, jy=0.0, jz=1.0, verbose=False):
         self.lattice_size = lattice_size
-        self.ampl = ampl
         self.omega = omega
         self.times = times
         self.jx, self.jy, self.jz = jx, jy, jz
@@ -130,8 +128,7 @@ class Hamiltonian:
 
 def jac(y, t0, jacmat, hamilt, params):
     omega = params.omega
-    ampl = params.ampl
-    drive = ampl * np.cos(omega*t0)
+    drive = np.cos(omega*t0)
     (rows,cols) = hamilt.hamiltmat.shape
     jacmat[0:rows, 0:cols] = hamilt.hamiltmat.imag + \
                                  drive * hamilt.trans_hamilt.imag
@@ -149,12 +146,13 @@ def func(y, t0, jacmat, hamilt, params):
 def defect_density(hamilt):
     lsize = hamilt.lattice_size
     fbz = np.linspace(-np.pi, np.pi, lsize)
-    epsilon_k = hamilt.ampl + np.cos(fbz)
+    epsilon_k = hamilt.hz + np.cos(fbz)
     delta_k = np.sin(fbz)
-    E_k = - np.sqrt(epsilon_k * epsilon_k + delta_k * delta_k)
+    E_k =  np.sqrt(epsilon_k * epsilon_k + delta_k * delta_k)
     s = delta_k/(epsilon_k - E_k)
     u = np.sqrt(1/(1 + s * s))
     v = s * u
+    u[np.isnan(v)] = 0.0
     v[np.isnan(v)] = 1.0
     c_ops = []
     for i in np.arange(lsize):
@@ -166,14 +164,14 @@ def defect_density(hamilt):
         else:
             c_i = sig_plus
         c_i = np.kron(c_i,np.eye(2**(lsize - i - 1)))    
-       #print c_i
         c_ops.append(c_i)
     ck_ops = []
     for k in fbz:
-        ck_ops.append(np.sum([c_j * np.exp((1j)*k*j) for j, c_j in enumerate(c_ops)], axis=0)/np.sqrt(lsize))
+        ck_ops.append(np.sum([c_j * np.exp((1j)*k*j)/np.sqrt(lsize) for j, c_j in enumerate(c_ops)], axis=0))
+        
     gammak_ops = []
     for ki, k in enumerate(fbz):
-        gammak_ops.append(u[ki] * ck_ops[ki] - (1j) * v[ki] * ck_ops[::-1][ki])
+        gammak_ops.append(u[ki] * ck_ops[ki] - (1j) * v[ki] * np.conjugate(ck_ops[::-1][ki].T))
     return np.sum([np.dot(gammak_ops[ki].T.conjugate(), gammak_ops[ki]) for ki, k in enumerate(fbz)], axis=0)/lsize
 
 def evolve_numint(hamilt,times,initstate, params):
@@ -202,7 +200,9 @@ def run_dyn(params):
 
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
     #initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
-    E, U = LA.eig(h.hamiltmat + h.ampl * h.trans_hamilt)
+    
+    #CHECK THIS
+    E, U = LA.eig(h.hamiltmat +  h.trans_hamilt)
     minind, = np.where(E == np.amin(E))
     initstate = U[:, minind[0]]
     #Required observables
