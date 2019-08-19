@@ -143,7 +143,30 @@ def jac(y, t0, jacmat, hamilt, params):
 def func(y, t0, jacmat, hamilt, params):
     return np.dot(jac(y, t0, jacmat, hamilt, params), y)
 
+def bcs_state(hamilt):
+    """
+    Evaluates the Jordan-Wigner BCS state for a finite sized lattice
+    """
+    lsize = hamilt.lattice_size
+    fbz = np.linspace(-np.pi, np.pi, lsize)
+    epsilon_k = hamilt.hz + np.cos(fbz)
+    delta_k = np.sin(fbz)
+    E_k =  np.sqrt(epsilon_k * epsilon_k + delta_k * delta_k)
+    s = delta_k/(epsilon_k - E_k)
+    u = np.sqrt(1/(1 + s * s))
+    v = s * u
+    u[np.isnan(v)] = 0.0
+    v[np.isnan(v)] = 1.0
+    bcs = 1
+    for ki, k in enumerate(fbz):
+        bcs = np.kron(bcs,np.array([u[ki],v[ki]]))
+    return bcs    
+
 def defect_density(hamilt):
+    """
+    Returns a matrix (sum_k \gamma^\dagger_k \gamma_k) that asymptotically
+    approaches the Defect Density Operator in the thermodynamic limit
+    """
     lsize = hamilt.lattice_size
     fbz = np.linspace(-np.pi, np.pi, lsize)
     epsilon_k = hamilt.hz + np.cos(fbz)
@@ -200,11 +223,7 @@ def run_dyn(params):
 
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
     #initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
-    
-    #CHECK THIS
-    E, U = LA.eig(h.hamiltmat +  h.trans_hamilt)
-    minind, = np.where(E == np.amin(E))
-    initstate = U[:, minind[0]]
+    initstate = bcs_state(h)
     #Required observables
 
     sx = np.sum(np.array([h.nummats(mu)[0] \
