@@ -143,24 +143,6 @@ def jac(y, t0, jacmat, hamilt, params):
 def func(y, t0, jacmat, hamilt, params):
     return np.dot(jac(y, t0, jacmat, hamilt, params), y)
 
-def bcs_state(hamilt):
-    """
-    Evaluates the Jordan-Wigner BCS state for a finite sized lattice
-    """
-    lsize = hamilt.lattice_size
-    fbz = np.linspace(-np.pi, np.pi, lsize)
-    epsilon_k = hamilt.hz + np.cos(fbz)
-    delta_k = np.sin(fbz)
-    E_k =  np.sqrt(epsilon_k * epsilon_k + delta_k * delta_k)
-    s = delta_k/(epsilon_k - E_k)
-    u = np.sqrt(1/(1 + s * s))
-    v = s * u
-    u[np.isnan(v)] = 0.0
-    v[np.isnan(v)] = 1.0
-    bcs = 1
-    for ki, k in enumerate(fbz):
-        bcs = np.kron(bcs,np.array([u[ki],v[ki]]))
-    return bcs    
 
 def defect_density(hamilt):
     """
@@ -194,8 +176,9 @@ def defect_density(hamilt):
         
     gammak_ops = []
     for ki, k in enumerate(fbz):
-        gammak_ops.append(u[ki] * ck_ops[ki] - (1j) * v[ki] * np.conjugate(ck_ops[::-1][ki].T))
-    return np.sum([np.dot(gammak_ops[ki].T.conjugate(), gammak_ops[ki]) for ki, k in enumerate(fbz)], axis=0)/lsize
+        if k > 0:
+            gammak_ops.append(u[ki] * ck_ops[ki] - (1j) * v[ki] * np.conjugate(ck_ops[::-1][ki].T))
+    return np.sum([np.dot(g.T.conjugate(), g) for g in gammak_ops], axis=0)/lsize
 
 def evolve_numint(hamilt,times,initstate, params):
     (rows,cols) = hamilt.hamiltmat.shape
@@ -223,7 +206,9 @@ def run_dyn(params):
 
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
     #initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
-    initstate = bcs_state(h)
+    #Start from ground state
+    E, U = LA.eigh(h.hamiltmat + h.trans_hamilt)
+    initstate = U[0]
     #Required observables
 
     sx = np.sum(np.array([h.nummats(mu)[0] \
