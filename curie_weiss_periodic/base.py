@@ -8,7 +8,8 @@ import numpy as np
 from pprint import pprint
 from itertools import combinations
 from scipy.integrate import odeint
-from numpy import linalg as LA
+from tempfile import mkdtemp
+import os.path as path
 
 desc = """Dynamics by exact diagonalization of
                 generalized Curie-Weiss model with long range interactions
@@ -27,7 +28,8 @@ class ParamData:
     def __init__(self, hopmat = np.eye(11), lattice_size=11, omega=0.0, \
                                       times = np.linspace(0.0, 10.0,100),\
                                        hx=0.0, hy=0.0, hz=0.0,\
-                                        jx=0.0, jy=0.0, jz=1.0, verbose=False):
+                                        jx=0.0, jy=0.0, jz=1.0, memmap=False,\
+                                                                verbose=False):
         self.lattice_size = lattice_size
         self.omega = omega
         self.times = times
@@ -35,13 +37,14 @@ class ParamData:
         self.hx, self.hy, self.hz = hx, hy, hz
         self.verbose = verbose
         self.jmat = hopmat
+        self.memmap = memmap
         self.norm = 1.0 #Change to kac norm later
 
 class Hamiltonian:
     description = """Precalculates all the dynamics information
                      of the Hamiltonian"""
 
-    def nummats(self, mu):
+    def nummats(self, mu, memmap=False):
         lsize = self.lattice_size
         #Left Hand Side
         if(mu == 0):
@@ -55,9 +58,21 @@ class Hamiltonian:
             id = np.eye(2**(lsize-mu-1),2**(lsize-mu-1))
             num_x, num_y, num_z = \
               np.kron(num_x, id), np.kron(num_y, id), np.kron(num_z, id)
-        return (num_x, num_y, num_z)
+        if memmap:
+            fname_x = path.join(mkdtemp(), 'ntemp_x.dat')
+            fname_y = path.join(mkdtemp(), 'ntemp_y.dat')
+            fname_z = path.join(mkdtemp(), 'ntemp_z.dat')
+            fp_x = np.memmap(fname_x, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_x[:,:] = num_x[:,:]
+            fp_y = np.memmap(fname_y, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_y[:,:] = num_y[:,:]
+            fp_z = np.memmap(fname_z, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_z[:,:] = num_z[:,:]
+            return (fp_x, fp_y, fp_z)
+        else:
+            return (num_x, num_y, num_z)
 
-    def kemats(self, sitepair):
+    def kemats(self, sitepair, memmap=False):
         lsize = self.lattice_size
         (mu, nu) = sitepair
         #Left Hand Side
@@ -79,9 +94,21 @@ class Hamiltonian:
             id = np.eye(2**(lsize-nu-1),2**(lsize-nu-1))
             ke_x, ke_y, ke_z = \
             np.kron(ke_x, id), np.kron(ke_y, id), np.kron(ke_z, id)
-        return (ke_x, ke_y, ke_z)
+        if memmap:
+            fname_x = path.join(mkdtemp(), 'ktemp_x.dat')
+            fname_y = path.join(mkdtemp(), 'ktemp_y.dat')
+            fname_z = path.join(mkdtemp(), 'ktemp_z.dat')
+            fp_x = np.memmap(fname_x, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_x[:,:] = ke_x[:,:]
+            fp_y = np.memmap(fname_y, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_y[:,:] = ke_y[:,:]
+            fp_z = np.memmap(fname_z, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_z[:,:] = ke_z[:,:]
+            return (fp_x, fp_y, fp_z)
+        else:
+            return (ke_x, ke_y, ke_z)
 
-    def offd_corrmats(self, sitepair):
+    def offd_corrmats(self, sitepair, memmap=False):
         lsize = self.lattice_size
         (mu, nu) = sitepair
         #Left Hand Side
@@ -103,27 +130,39 @@ class Hamiltonian:
             id = np.eye(2**(lsize-nu-1),2**(lsize-nu-1))
             cxy, cxz, cyz = \
             np.kron(cxy, id), np.kron(cxz, id), np.kron(cyz, id)
-        return (cxy, cxz, cyz)
+        if memmap:
+            fname_x = path.join(mkdtemp(), 'ctemp_x.dat')
+            fname_y = path.join(mkdtemp(), 'ctemp_y.dat')
+            fname_z = path.join(mkdtemp(), 'ctemp_z.dat')
+            fp_x = np.memmap(fname_x, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_x[:,:] = cxy[:,:]
+            fp_y = np.memmap(fname_y, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_y[:,:] = cxz[:,:]
+            fp_z = np.memmap(fname_z, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
+            fp_z[:,:] = cyz[:,:]
+            return (fp_x, fp_y, fp_z)
+        else:    
+            return (cxy, cxz, cyz)
 
     def __init__(self, params):
         #Copy arguments from params to this class
         self.__dict__.update(params.__dict__)
         #Build KE matrix
         self.hamiltmat = self.jx * np.sum(np.array(\
-          [self.jmat[sitepair] * self.kemats(sitepair)[0] \
+          [self.jmat[sitepair] * self.kemats(sitepair, memmap=params.memmap)[0] \
             for sitepair in combinations(xrange(self.lattice_size),2)]), axis=0)
         self.hamiltmat += self.jy * np.sum(np.array(\
-          [self.jmat[sitepair] * self.kemats(sitepair)[1] \
+          [self.jmat[sitepair] * self.kemats(sitepair, memmap=params.memmap)[1] \
             for sitepair in combinations(xrange(self.lattice_size),2)]), axis=0)
         self.hamiltmat += self.jz * np.sum(np.array(\
-          [self.jmat[sitepair] * self.kemats(sitepair)[2] \
+          [self.jmat[sitepair] * self.kemats(sitepair, memmap=params.memmap)[2] \
             for sitepair in combinations(xrange(self.lattice_size),2)]), axis=0)
         self.hamiltmat = self.hamiltmat/self.norm
-        self.trans_hamilt = self.hx * np.sum(np.array([self.nummats(mu)[0] \
+        self.trans_hamilt = self.hx * np.sum(np.array([self.nummats(mu, memmap=params.memmap)[0] \
                                              for mu in xrange(self.lattice_size)]), axis=0)
-        self.trans_hamilt += self.hy * np.sum(np.array([self.nummats(mu)[1] \
+        self.trans_hamilt += self.hy * np.sum(np.array([self.nummats(mu, memmap=params.memmap)[1] \
                                               for mu in xrange(self.lattice_size)]), axis=0)
-        self.trans_hamilt += self.hz * np.sum(np.array([self.nummats(mu)[2] \
+        self.trans_hamilt += self.hz * np.sum(np.array([self.nummats(mu, memmap=params.memmap)[2] \
                                               for mu in xrange(self.lattice_size)]), axis=0)
 
 def jac(y, t0, jacmat, hamilt, params):
@@ -193,51 +232,28 @@ def evolve_numint(hamilt,times,initstate, params):
     return psi_t[:,0:rows] + (1.j) * psi_t[:, rows:]
 
 
-def run_dyn(params):
+def run_dyn(params, initstate=None):
     if params.verbose:
         print "Executing diagonalization with parameters:"
         pprint(vars(params), depth=1)
-    else:
-        print "Starting run ..."
-
+        
     h = Hamiltonian(params)
     lsize = h.lattice_size
-    lsq = lsize * lsize
-
+    
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
-    #initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
+    if initstate is None:
+        initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
     #Start from ground state
-    E, U = LA.eigh(h.hamiltmat + h.trans_hamilt)
-    initstate = U[0]
+    #E, U = LA.eigh(h.hamiltmat + h.trans_hamilt)
+    #initstate = U[0]
+    
     #Required observables
 
-    sx = np.sum(np.array([h.nummats(mu)[0] \
-      for mu in xrange(h.lattice_size)]), axis=0)
-    sy = np.sum(np.array([h.nummats(mu)[1] \
-      for mu in xrange(h.lattice_size)]), axis=0)
-    sz = np.sum(np.array([h.nummats(mu)[2] \
-      for mu in xrange(h.lattice_size)]), axis=0)
+    sx = np.sum(np.array([h.nummats(mu)[0] for mu in xrange(lsize)]), axis=0)
+    sy = np.sum(np.array([h.nummats(mu)[1] for mu in xrange(lsize)]), axis=0)
+    sz = np.sum(np.array([h.nummats(mu)[2] for mu in xrange(lsize)]), axis=0)
     sx, sy, sz = sx/lsize, sy/lsize, sz/lsize
 
-    sxvar = np.sum(np.array( [h.kemats(sitepair)[0] \
-          for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    syvar = np.sum(np.array( [h.kemats(sitepair)[1] \
-      for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    szvar = np.sum(np.array( [h.kemats(sitepair)[2] \
-      for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    sxvar, syvar, szvar = (sxvar/lsq), (syvar/lsq), (szvar/lsq)
-
-    sxyvar = np.sum(np.array(\
-      [ h.offd_corrmats(sitepair)[0] \
-        for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    sxzvar = np.sum(np.array(\
-      [ h.offd_corrmats(sitepair)[1] \
-        for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    syzvar = np.sum(np.array(\
-      [h.offd_corrmats(sitepair)[2] \
-        for sitepair in combinations(xrange(h.lattice_size),2)]), axis=0)
-    sxyvar, sxzvar, syzvar = (sxyvar/lsq), (sxzvar/lsq), (syzvar/lsq)
-    
     #Defect density
     gdg = defect_density(h)
 
@@ -247,39 +263,13 @@ def run_dyn(params):
     sydata = np.array([np.vdot(psi,np.dot(sy,psi)) for psi in psi_t])
     szdata = np.array([np.vdot(psi,np.dot(sz,psi)) for psi in psi_t])
 
-    sxvar_data = np.array([np.vdot(psi,np.dot(sxvar,psi)) \
-      for psi in psi_t])
-    sxvar_data = 2.0 * sxvar_data + (1./lsize) - (sxdata)**2
-
-    syvar_data = np.array([np.vdot(psi,np.dot(syvar,psi)) \
-      for psi in psi_t])
-    syvar_data = 2.0 * syvar_data + (1./lsize) - (sydata)**2
-
-    szvar_data = np.array([np.vdot(psi,np.dot(szvar,psi)) \
-      for psi in psi_t])
-    szvar_data = 2.0 * szvar_data + (1./lsize) - (szdata)**2
-
-    sxyvar_data = np.array([np.vdot(psi,np.dot(sxyvar,psi)) \
-      for psi in psi_t])
-    sxyvar_data = 2.0 * sxyvar_data - (sxdata) * (sydata)
-
-    sxzvar_data = np.array([np.vdot(psi,np.dot(sxzvar,psi)) \
-      for psi in psi_t])
-    sxzvar_data = 2.0 * sxzvar_data - (sxdata) * (szdata)
-
-    syzvar_data = np.array([np.vdot(psi,np.dot(syzvar,psi)) \
-      for psi in psi_t])
-    syzvar_data = 2.0 * syzvar_data - (sydata) * (szdata)
+    defect_density_data = np.abs(np.array([np.vdot(psi,np.dot(gdg,psi))\
+                                           for psi in psi_t]))
     
-    defect_density_data = np.abs(np.array([np.vdot(psi,np.dot(gdg,psi)) for psi in psi_t]))
-    
-
     print "\nDumping outputs to dictionary ..."
     
     return {"t":params.times, "sx":sxdata, "sy":sydata, "sz":szdata, \
-              "sxvar":sxvar_data, "syvar":syvar_data, "szvar":szvar_data,\
-              "sxyvar":sxyvar_data, "sxzvar":sxzvar_data, "syzvar":syzvar_data,\
-              "defect_density":defect_density_data}
+                                          "defect_density":defect_density_data}
 
 if __name__ == '__main__':   
     #Power law decay of interactions
