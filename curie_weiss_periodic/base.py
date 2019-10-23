@@ -141,7 +141,7 @@ class Hamiltonian:
             fp_z = np.memmap(fname_z, dtype='complex128', mode='w+', shape=(2**lsize,2**lsize))
             fp_z[:,:] = cyz[:,:]
             return (fp_x, fp_y, fp_z)
-        else:    
+        else:
             return (cxy, cxz, cyz)
 
     def __init__(self, params):
@@ -204,15 +204,15 @@ def defect_density(hamilt):
             c_i = 1
             for j in np.arange(0,i):
                 c_i = np.kron(c_i, sig_z)
-            c_i = np.kron(c_i, sig_plus)    
+            c_i = np.kron(c_i, sig_plus)
         else:
             c_i = sig_plus
-        c_i = np.kron(c_i,np.eye(2**(lsize - i - 1)))    
+        c_i = np.kron(c_i,np.eye(2**(lsize - i - 1)))
         c_ops.append(c_i)
     ck_ops = []
     for k in fbz:
         ck_ops.append(np.sum([c_j * np.exp((1j)*k*j)/np.sqrt(lsize) for j, c_j in enumerate(c_ops)], axis=0))
-        
+
     gammak_ops = []
     for ki, k in enumerate(fbz):
         if k > 0:
@@ -236,17 +236,17 @@ def run_dyn(params, initstate=None):
     if params.verbose:
         print "Executing diagonalization with parameters:"
         pprint(vars(params), depth=1)
-        
+
     h = Hamiltonian(params)
     lsize = h.lattice_size
-    
+
     #Assume that psi_0 is the eigenstate of \sum_\mu sigma^x_\mu
     if initstate is None:
         initstate =  np.ones(2**lsize, dtype="float64")/np.sqrt(2**lsize)
     #Start from ground state
     #E, U = LA.eigh(h.hamiltmat + h.trans_hamilt)
     #initstate = U[0]
-    
+
     #Required observables
 
     sx = np.sum(np.array([h.nummats(mu)[0] for mu in xrange(lsize)]), axis=0)
@@ -257,6 +257,13 @@ def run_dyn(params, initstate=None):
     #Defect density
     gdg = defect_density(h)
 
+    #SZSZ Correlations
+    mid = np.floor(lsize/2).astype(int)
+    sites = np.concatenate((np.arange(mid),np.arange(mid+1, lsize)))
+    
+    szsz =  np.array([np.array(h.kemats((np.minimum(i,mid),np.maximum(i,mid)),\
+                                        memmap=params.memmap)[2]) for i in sites])
+
     psi_t = evolve_numint(h, params.times, initstate, params)
 
     sxdata = np.array([np.vdot(psi,np.dot(sx,psi)) for psi in psi_t])
@@ -265,13 +272,16 @@ def run_dyn(params, initstate=None):
 
     defect_density_data = np.abs(np.array([np.vdot(psi,np.dot(gdg,psi))\
                                            for psi in psi_t]))
-    
-    print "\nDumping outputs to dictionary ..."
-    
-    return {"t":params.times, "sx":sxdata, "sy":sydata, "sz":szdata, \
-                                          "defect_density":defect_density_data}
+            
+    szszdata = np.real(np.array([np.dot(np.conj(psi),np.dot(szsz,psi).T)\ for psi in psi_t]))
 
-if __name__ == '__main__':   
+    print "\nDumping outputs to dictionary ..."
+
+    return {"t":params.times, "sx":sxdata, "sy":sydata, "sz":szdata, \
+                                          "defect_density":defect_density_data,\
+                                          "szsz":szszdata}
+
+if __name__ == '__main__':
     #Power law decay of interactions
     paramdat = ParamData()
     run_dyn(paramdat)
