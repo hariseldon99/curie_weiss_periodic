@@ -273,7 +273,7 @@ def run_dyn(params, initstate=None):
     defect_density_data = np.abs(np.array([np.vdot(psi,np.dot(gdg,psi))\
                                            for psi in psi_t]))
             
-    szszdata = np.real(np.array([np.dot(np.conj(psi),np.dot(szsz,psi).T)\ for psi in psi_t]))
+    szszdata = np.real(np.array([np.dot(np.conj(psi),np.dot(szsz,psi).T) for psi in psi_t]))
 
     print "\nDumping outputs to dictionary ..."
 
