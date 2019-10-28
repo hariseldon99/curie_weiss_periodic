@@ -2,6 +2,7 @@
 
 import numpy as np
 from numpy import linalg as LA
+from scipy.sparse import dia_matrix
 import curie_weiss_periodic as cp
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
