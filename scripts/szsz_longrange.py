@@ -9,7 +9,7 @@ from matplotlib.ticker import FormatStrFormatter
 from matplotlib import rc
 rc('text', usetex=True)
 
-N = 10
+N = 5
 omega = 8.65372791291101
 hz = 25.0
 beta = 1.5
@@ -47,6 +47,7 @@ np.savetxt("sz.txt", sz)
 np.savetxt("defect_density.txt", dd)
 np.savetxt("sz_corr.txt", szcorr)
 
+plt.switch_backend('agg')
 plt.figure()
 plt.suptitle(r'$N = {}$, '.format(N) + r'$h_z = {}$, '.format(hz) + r'$\omega = {}$'.format(omega) + r'$\beta = {}$'.format(beta), fontsize=25)
 plt.subplot(121)
@@ -77,4 +78,4 @@ plt.xlabel(r't', fontsize=15)
 plt.ylabel(r'$\overline{\sigma_z}$', fontsize=15)
 
 plt.savefig("corr.svg", format='svg')
-plt.show()
+#plt.show()

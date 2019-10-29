@@ -1,23 +1,23 @@
 #!/bin/bash
 #########################################################################
 ## Name of my job
-#PBS -N ising_exact3
+#PBS -N ising_test
 
 ## Name of the job queue
 #PBS -q S30
 
 ## Walltime
-#PBS -l walltime=70:00:00
+#PBS -l walltime=7:00:00
 
 ##Number of nodes and procs per node.
 #PBS -l nodes=1:ppn=1
 
 ##Send me email when my job aborts, begins, or ends
 #PBS -m ea
-#PBS -M www.totan11@gmail.com
+#PBS -M daneel@utexas.edu
 #########################################################################
 ## Name of python script to be executed
-SCRIPT="./corr.py"
+SCRIPT="./szsz_longrange.py"
 #########################################################################
 
 ##Export all PBS environment variables
@@ -28,7 +28,7 @@ cd $PBS_O_WORKDIR
 ## Number of OpenMP threads to be used by the blas library. Keep this small
 export OMP_NUM_THREADS=2
 ##Load these modules before running
-module load openblas openmpi anaconda
+module load texlive openblas openmpi anaconda
 BEGINTIME=$(date +"%s")
 python -W ignore $SCRIPT 
 ENDTIME=$(date +"%s")
