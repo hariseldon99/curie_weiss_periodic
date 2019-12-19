@@ -4,6 +4,7 @@ Created on Nov 14 2018
 
 @author: Analabha Roy (daneel@utexas.edu)
 """
+from __future__ import print_function
 import numpy as np
 from pprint import pprint
 from itertools import combinations
@@ -234,7 +235,7 @@ def evolve_numint(hamilt,times,initstate, params):
 
 def run_dyn(params, initstate=None):
     if params.verbose:
-        print "Executing diagonalization with parameters:"
+        print("Executing diagonalization with parameters:")
         pprint(vars(params), depth=1)
 
     h = Hamiltonian(params)
@@ -275,7 +276,7 @@ def run_dyn(params, initstate=None):
             
     szszdata = np.real(np.array([np.dot(np.conj(psi),np.dot(szsz,psi).T) for psi in psi_t]))
 
-    print "\nDumping outputs to dictionary ..."
+    print("\nDumping outputs to dictionary ...")
 
     return {"t":params.times, "sx":sxdata, "sy":sydata, "sz":szdata, \
                                           "defect_density":defect_density_data,\
